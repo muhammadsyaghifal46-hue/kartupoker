@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capsa Banting Mabar Indo</title>
+  <!-- PeerJS Library untuk Mabar WebRTC -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <!-- File CSS Eksternal -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- LOBBY SELEKSI JUMLAH PEMAIN -->
+  <div id="lobby">
+    <h1>🎴 Capsa Banting Indo 🎴</h1>
+    
+    <div class="input-group">
+      <label>Nama Kamu:</label>
+      <input type="text" id="username" value="Pemain 1">
+    </div>
+
+    <div class="input-group">
+      <label>Kapasitas Pemain Ruangan:</label>
+      <select id="player-capacity">
+        <option value="2">2 Pemain (1v1)</option>
+        <option value="3">3 Pemain</option>
+        <option value="4" selected>4 Pemain (Full)</option>
+      </select>
+    </div>
+
+    <button class="btn" onclick="createRoom()">Buat Ruangan (Host)</button>
+
+    <div class="divider"></div>
+
+    <div class="input-group">
+      <label>Kode Ruangan Host:</label>
+      <input type="text" id="join-id" placeholder="Tempel Kode Host di sini">
+    </div>
+    
+    <button class="btn btn-secondary" onclick="joinRoom()">Gabung Ruangan</button>
+    
+    <div class="status-text" id="status">Menghubungkan jaringan...</div>
+    <div id="player-list-lobby"></div>
+    
+    <button class="btn btn-start-game" id="btn-host-start" style="display:none;" onclick="hostStartGame()">
+      Mulai Game Sekarang 🚀
+    </button>
+  </div>
+
+  <!-- AREA ARENA GAME (MEJA 4 SISI DYNAMIC) -->
+  <div id="game-container">
+    <div class="table">
+      <!-- Banner Pengumuman Pemenang / Status BOM -->
+      <div id="game-banner"></div>
+
+      <!-- Pemain Atas -->
+      <div class="player-slot p-top" id="slot-top" style="display:none;">
+        <div class="cards-holder" id="cards-top"></div>
+        <div class="player-info" id="info-top">
+          <span id="name-top">Pemain Atas</span> | $<span id="chips-top">1000</span>
+        </div>
+      </div>
+
+      <!-- Pemain Kiri -->
+      <div class="player-slot p-left" id="slot-left" style="display:none;">
+        <div class="cards-holder" id="cards-left"></div>
+        <div class="player-info" id="info-left">
+          <span id="name-left">Pemain Kiri</span> | $<span id="chips-left">1000</span>
+        </div>
+      </div>
+
+      <!-- Area Tengah Meja (Kartu Yang Sedang Diadu & Kumpul Angka 3) -->
+      <div class="table-center">
+        <div class="cards-pool-label">Area Kartu Meja</div>
+        <div class="cards-pool" id="table-cards-pool"></div>
+      </div>
+
+      <!-- Pemain Kanan -->
+      <div class="player-slot p-right" id="slot-right" style="display:none;">
+        <div class="cards-holder" id="cards-right"></div>
+        <div class="player-info" id="info-right">
+          <span id="name-right">Pemain Kanan</span> | $<span id="chips-right">1000</span>
+        </div>
+      </div>
+
+      <!-- Pemain Utama / Kamu (Bawah) -->
+      <div class="player-slot p-bottom">
+        <div class="player-info" id="info-my">
+          <span id="name-my">Kamu</span> | $<span id="chips-my">1000</span>
+        </div>
+        <div class="my-cards-container" id="cards-my"></div>
+      </div>
+    </div>
+
+    <!-- PANEL TOMBOL KONTROL AKSI PEMAIN -->
+    <div class="controls">
+      <button class="btn-action btn-pass" id="btn-pass" onclick="handlePass()" disabled>
+        Lewat (PASS)
+      </button>
+      <button class="btn-action btn-play" id="btn-play" onclick="handlePlayCards()" disabled>
+        Keluarkan Kartu Pilihan
+      </button>
+    </div>
+
+    <!-- LOG AKTIVITAS GAME -->
+    <div id="log"></div>
+  </div>
+
+  <!-- File JavaScript Eksternal -->
+  <script src="script.js"></script>
+</body>
+</html>
