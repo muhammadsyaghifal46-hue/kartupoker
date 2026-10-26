@@ -1,5 +1,5 @@
 // ==========================================
-// CAPSA BANTING MULTIPLAYER (REVISI LOGIKA)
+// CAPSA BANTING MULTIPLAYER (LENGKAP & PRESISI)
 // ==========================================
 
 let peer = null;
@@ -8,6 +8,7 @@ let clientConns = [];
 let isHost = false;
 let myName = "";
 let myId = "";
+let shortCode = "";
 let targetCapacity = 4;
 
 // Game State Data
@@ -18,7 +19,7 @@ let passCount = 0;
 let tableCardsPool = []; 
 let selectedCardIndices = [];
 let gameInProgress = false;
-let gamePhase = 'LOBBY'; // 'LOBBY', 'COLLECT_THREES', 'PLAYING'
+let gamePhase = 'LOBBY'; 
 
 const suits = ['♣', '♦', '♥', '♠'];
 const suitValues = { '♣': 0, '♦': 1, '♥': 2, '♠': 3 };
@@ -27,18 +28,32 @@ const rankValues = {
   '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15
 };
 
+function generateShortCode() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  peer = new Peer();
+  shortCode = generateShortCode();
+  let peerCustomId = "capsa-indo-" + shortCode;
+
+  peer = new Peer(peerCustomId);
 
   peer.on('open', id => {
     myId = id;
-    document.getElementById('status').innerText = "Siap! Kode Ruangan Kamu: " + id;
+    document.getElementById('status').innerText = "Siap! Kode Ruangan Kamu: " + shortCode;
+  });
+
+  peer.on('error', err => {
+    if (err.type === 'unavailable-id') {
+      shortCode = generateShortCode();
+      peer = new Peer("capsa-indo-" + shortCode);
+    }
   });
 
   peer.on('connection', conn => {
     if (!isHost) return;
     if (clientConns.length >= targetCapacity - 1 || gameInProgress) {
-      conn.send({ type: 'ERROR', message: 'Ruangan penuh atau permainan sedang berjalan.' });
+      conn.send({ type: 'ERROR', message: 'Ruangan penuh atau game sedang berjalan.' });
       setTimeout(() => conn.close(), 500);
       return;
     }
@@ -56,21 +71,22 @@ function createRoom() {
 
   players = [{ id: myId, name: myName, chips: 1000, cards: [], hasSubmittedThrees: false }];
 
-  navigator.clipboard.writeText(myId);
-  document.getElementById('status').innerText = `Ruangan (${targetCapacity} Pemain) dibuat! Kode tersalin. Menunggu pemain lain...`;
+  navigator.clipboard.writeText(shortCode);
+  document.getElementById('status').innerText = `Ruangan (${targetCapacity} Pemain) dibuat!\nKODE RUANGAN: ${shortCode} (Tersalin)`;
   
   updateLobbyUI();
   document.getElementById('btn-host-start').style.display = 'block';
 }
 
 function joinRoom() {
-  const targetId = document.getElementById('join-id').value.trim();
-  if (!targetId) return alert("Masukkan Kode Ruangan Host!");
+  const inputCode = document.getElementById('join-id').value.trim();
+  if (!inputCode) return alert("Masukkan 4 Angka Kode Ruangan Host!");
   
   isHost = false;
   myName = document.getElementById('username').value.trim() || ("Pemain " + Math.floor(Math.random()*100));
 
-  hostConn = peer.connect(targetId);
+  let targetPeerId = "capsa-indo-" + inputCode;
+  hostConn = peer.connect(targetPeerId);
 
   hostConn.on('open', () => {
     hostConn.send({ type: 'JOIN', name: myName, id: myId });
@@ -97,7 +113,7 @@ function log(msg) {
 }
 
 // ==========================================
-// PEMBAGIAN KARTU & FASE PERMAINAN
+// PEMBAGIAN KARTU & FASE GAME
 // ==========================================
 
 function createDeck() {
@@ -117,7 +133,7 @@ function hostStartGame() {
   if (players.length < 2) return alert("Minimal 2 pemain untuk mulai!");
   
   gameInProgress = true;
-  startNewRound("Game Dimulai! Kumpulkan Kartu 3 milikmu ke meja.");
+  startNewRound("📢 FASE KUMPUL ANGKA 3: Harap kumpulkan kartu Angka 3 ke tengah bagi yang memiliki!");
 }
 
 function startNewRound(bannerMsg = "") {
@@ -138,13 +154,12 @@ function startNewRound(bannerMsg = "") {
     sortCards(p.cards);
   });
 
-  // Cek pemain yang tidak punya angka 3 sama sekali (otomatis selesai kumpul)
   players.forEach(p => {
     let has3 = p.cards.some(c => c.rank === '3');
     if (!has3) p.hasSubmittedThrees = true;
   });
 
-  broadcastAndApplyState(bannerMsg || "Fase Kumpul Angka 3!");
+  broadcastAndApplyState(bannerMsg || "📢 Harap kumpulkan Angka 3 ke tengah meja!");
 }
 
 function sortCards(cards) {
@@ -153,10 +168,6 @@ function sortCards(cards) {
     return a.suitVal - b.suitVal;
   });
 }
-
-// ==========================================
-// DATA HANDLERS
-// ==========================================
 
 function handleHostData(conn, data) {
   if (data.type === 'JOIN') {
@@ -189,31 +200,22 @@ function handleClientData(data) {
   }
 }
 
-// ==========================================
-// LOGIKA KUMPUL ANGKA 3 & PERMAINAN
-// ==========================================
-
 function processSubmitThrees(pIdx, cardIndices) {
   let p = players[pIdx];
   let selected = cardIndices.map(i => p.cards[i]).filter(Boolean);
 
-  // Validasi: Harus berupa kartu 3 saja
   if (selected.some(c => c.rank !== '3')) return;
 
-  // Pindahkan ke meja dengan keterangan nama pemegang
   selected.forEach(c => {
     tableCardsPool.push({ card: c, owner: p.name });
   });
 
-  // Hapus dari tangan
   p.cards = p.cards.filter(c => c.rank !== '3');
   p.hasSubmittedThrees = true;
 
-  // Jika semua sudah kumpul angka 3, tentukan pemegang 3♠ untuk jalan pertama
   if (players.every(pl => pl.hasSubmittedThrees)) {
     gamePhase = 'PLAYING';
     
-    // Cari pemegang 3♠
     let starterIndex = 0;
     tableCardsPool.forEach(item => {
       if (item.card.rank === '3' && item.card.suit === '♠') {
@@ -223,29 +225,67 @@ function processSubmitThrees(pIdx, cardIndices) {
     });
 
     activeTurnIndex = starterIndex;
-    broadcastAndApplyState(`Semua Angka 3 terkumpul! ${players[starterIndex].name} (pemegang 3♠) jalan pertama.`);
+    broadcastAndApplyState(`Angka 3 terkumpul! ${players[starterIndex].name} (pemegang 3♠) jalan pertama.`);
   } else {
     broadcastAndApplyState(`${p.name} menaruh Angka 3 ke meja.`);
   }
 }
 
+// ==========================================
+// ANALISIS KOMBINASI LENGKAP CAPSA
+// ==========================================
+
 function analyzeCombination(cards) {
   if (!cards || cards.length === 0) return null;
   let len = cards.length;
-  let sorted = [...cards].sort((a, b) => a.numVal - b.numVal);
+  let sorted = [...cards].sort((a, b) => a.numVal - b.numVal || a.suitVal - b.suitVal);
 
+  // 1. Single (1 Kartu)
   if (len === 1) return { type: 'SINGLE', rank: sorted[0].numVal, suit: sorted[0].suitVal };
-  if (len === 2 && sorted[0].numVal === sorted[1].numVal) return { type: 'PAIR', rank: sorted[1].numVal, suit: sorted[1].suitVal };
 
+  // 2. Pair (2 Kartu Kembar)
+  if (len === 2 && sorted[0].numVal === sorted[1].numVal) {
+    return { type: 'PAIR', rank: sorted[1].numVal, suit: sorted[1].suitVal };
+  }
+
+  // 3. Tris (3 Kartu Kembar)
+  if (len === 3 && sorted[0].numVal === sorted[2].numVal) {
+    return { type: 'TRIS', rank: sorted[2].numVal, suit: sorted[2].suitVal };
+  }
+
+  // 4. Four of a Kind / 4-Kembar (BOM)
+  if (len === 4 && sorted[0].numVal === sorted[3].numVal) {
+    return { type: 'BOM_FOUR_KIND', rank: sorted[0].numVal, suit: 3 };
+  }
+
+  // Cek Urutan Seri / Straight
   let isSeq = true;
   for (let i = 0; i < len - 1; i++) {
     if (sorted[i + 1].numVal !== sorted[i].numVal + 1) { isSeq = false; break; }
   }
 
+  // 5. Seri 3 (3 Kartu Berurutan, contoh: 4-5-6)
   if (len === 3 && isSeq) return { type: 'SERI_3', rank: sorted[2].numVal, suit: sorted[2].suitVal };
+
+  // 6. Seri 4 (4 Kartu Berurutan)
   if (len === 4 && isSeq) return { type: 'SERI_4', rank: sorted[3].numVal, suit: sorted[3].suitVal };
+
+  // 7. Seri 5 (5 Kartu Berurutan - BOM)
   if (len === 5 && isSeq) return { type: 'BOM_SERI_5', rank: sorted[4].numVal, suit: sorted[4].suitVal };
-  if (len === 4 && sorted[0].numVal === sorted[3].numVal) return { type: 'BOM_FOUR_KIND', rank: sorted[0].numVal, suit: 3 };
+
+  // 8. Dual Tris Berurutan (6 Kartu, contoh: 4-4-4 dan 5-5-5) -> Penghenti Pair As
+  if (len === 6) {
+    let t1 = sorted[0].numVal === sorted[2].numVal;
+    let t2 = sorted[3].numVal === sorted[5].numVal;
+    if (t1 && t2 && sorted[3].numVal === sorted[0].numVal + 1) {
+      return { type: 'DUAL_TRIS', rank: sorted[5].numVal, suit: sorted[5].suitVal };
+    }
+  }
+
+  // 9. Dual Seri 3 Berurutan (6 Kartu, contoh: 3-4-5 dan 4-5-6) -> Penghenti Pair As
+  if (len === 6 && isSeq) {
+    return { type: 'DUAL_SERI_3', rank: sorted[5].numVal, suit: sorted[5].suitVal };
+  }
 
   return null;
 }
@@ -254,33 +294,51 @@ function isValidMove(selectedCards) {
   let combo = analyzeCombination(selectedCards);
   if (!combo) return { valid: false, reason: "Kombinasi kartu tidak sah!" };
 
+  // Meja kosong -> Bebas buka pola apa saja
   if (!lastPlay) return { valid: true, combo: combo };
+
   let last = lastPlay.combo;
 
-  // Seri 3 atau 2 Single matikan As Single
+  // --- LOGIKA PENGHENTI & BOM ---
+
+  // A. Mematikan As Single (Bisa pakai Seri 3 atau Kartu 2 Single)
   if (last.type === 'SINGLE' && last.rank === rankValues['A']) {
     if (combo.type === 'SERI_3') return { valid: true, combo: combo };
     if (combo.type === 'SINGLE' && combo.rank === rankValues['2']) return { valid: true, combo: combo };
   }
 
-  // Seri 4 / BOM matikan Kartu 2
+  // B. Mematikan Pair As (Bisa pakai Dual Seri 3 atau Dual Tris)
+  if (last.type === 'PAIR' && last.rank === rankValues['A']) {
+    if (combo.type === 'DUAL_SERI_3' || combo.type === 'DUAL_TRIS') return { valid: true, combo: combo };
+  }
+
+  // C. Menge-BOM Kartu 2 Single (Bisa pakai Seri 4, Seri 5, atau 4-Kembar)
   if (last.type === 'SINGLE' && last.rank === rankValues['2']) {
     if (combo.type === 'SERI_4') return { valid: true, combo: combo };
     if (combo.type.startsWith('BOM_')) return { valid: true, combo: combo, isBOM: true };
   }
 
-  // Mainkan kombinasi sejenis yang lebih tinggi
+  // D. Counter BOM (Adu BOM dengan BOM lebih tinggi)
+  if (last.type.startsWith('BOM_') && combo.type.startsWith('BOM_')) {
+    if (combo.type === 'BOM_FOUR_KIND' && last.type === 'BOM_SERI_5') return { valid: true, combo: combo };
+    if (combo.type === last.type && combo.rank > last.rank) return { valid: true, combo: combo };
+  }
+
+  // E. Aturan Pola Sejenis (Jumlah kartu & tipe kombinasi harus sama)
   if (combo.type === last.type && selectedCards.length === lastPlay.cards.length) {
     if (combo.rank > last.rank) return { valid: true, combo: combo };
     if (combo.rank === last.rank && combo.suit > last.suit) return { valid: true, combo: combo };
   }
 
-  return { valid: false, reason: "Kartumu lebih kecil dari kartu meja!" };
+  return { valid: false, reason: "Kartumu tidak cocok/kurang tinggi untuk memukul meja!" };
 }
 
+// ==========================================
+// EKSEKUSI JALAN & BOM
+// ==========================================
+
 function handlePlayCards() {
-  let myIndex = players.findIndex(p => p.id === myId);
-  if (myIndex === -1) myIndex = players.findIndex(p => p.name === myName);
+  let myIndex = players.findIndex(p => p.id === myId || p.name === myName);
   
   if (gamePhase === 'COLLECT_THREES') {
     let me = players[myIndex];
@@ -328,7 +386,7 @@ function processPlayCards(pIdx, cardsPlayed) {
   tableCardsPool = cardsPlayed.map(c => ({ card: c, owner: p.name }));
   passCount = 0;
 
-  // DETEKSI BOM ATAS KARTU 2
+  // DETEKSI BOM PADA KARTU 2
   if (lastPlay && lastPlay.combo.type === 'SINGLE' && lastPlay.combo.rank === rankValues['2']) {
     if (combo.type.startsWith('BOM_')) {
       let victim = players[lastPlay.playerIndex];
@@ -347,7 +405,7 @@ function processPlayCards(pIdx, cardsPlayed) {
 
   if (p.cards.length === 0) {
     p.chips += 200;
-    startNewRound(`🏆 HURA! ${p.name} MENANG ronde ini!`);
+    startNewRound(`🏆 HURA! ${p.name} BERHASIL MENGHABISKAN KARTU DAN MENANG!`);
     return;
   }
 
@@ -364,7 +422,7 @@ function processPass(pIdx) {
     lastPlay = null;
     tableCardsPool = [];
     passCount = 0;
-    broadcastAndApplyState(`${players[activeTurnIndex].name} menguasai meja (Bebas jalan baru)!`);
+    broadcastAndApplyState(`${players[activeTurnIndex].name} menguasai meja (Bebas buka jalan baru)!`);
     return;
   }
 
@@ -407,21 +465,17 @@ function applyGameState(state) {
 }
 
 function renderLayout() {
-  let myIndex = players.findIndex(p => p.id === myId);
-  if (myIndex === -1) myIndex = players.findIndex(p => p.name === myName);
+  let myIndex = players.findIndex(p => p.id === myId || p.name === myName);
   if (myIndex === -1) myIndex = 0;
 
   let me = players[myIndex];
 
-  // Render Pemain Utama (Bawah)
   document.getElementById('name-my').innerText = me.name + " (Kamu)";
   document.getElementById('chips-my').innerText = me.chips;
   renderMyCards(me.cards);
 
-  // Sembunyikan semua slot dulu
   ['top', 'left', 'right'].forEach(s => document.getElementById(`slot-${s}`).style.display = 'none');
 
-  // Petakan posisi lawan secara relatif terhadap pemain lokal
   let otherPlayers = [];
   for (let i = 1; i < players.length; i++) {
     let idx = (myIndex + i) % players.length;
@@ -441,7 +495,6 @@ function renderLayout() {
 
   renderTablePool();
 
-  // Pengaturan Tombol Kontrol
   let isMyTurn = (activeTurnIndex === myIndex);
   document.getElementById('info-my').classList.toggle('active', isMyTurn && gamePhase === 'PLAYING');
 
